@@ -59,7 +59,7 @@ globs: *.sql
 | leading `/` or `./` | anchored at the project root: `/README.md` |
 | trailing `/` | everything below that directory: `docs/` |
 
-The tool's `file_path` is made relative to the project root (absolute and relative paths both work) and matched with `/` separators, case-sensitively. Files outside the project never match. Character classes (`[abc]`) and negation (`!`) are not supported. A rule uses its first 32 globs, and a glob longer than 256 characters is ignored.
+The tool's `file_path` is made relative to the project root (absolute and relative paths both work) and matched with `/` separators, case-sensitively. A `file_path` that is outside the project both as written and after resolving symlinks never matches. Character classes (`[abc]`) and negation (`!`) are not supported. A rule uses its first 32 globs, and a glob longer than 256 characters is ignored.
 
 ## Install
 
@@ -93,7 +93,7 @@ Requirements: `node` 16 or newer on `PATH`. There are no npm packages, and the p
 
 ## Limits
 
-- **Size**: each rule is cut at 4000 characters and `CLAUDE.md` at 8000. A truncated item ends with a note that tells the model to Read the file for the rest. One injection is capped at 12000 characters and at 30000 bytes of hook output, which keeps it under ZCode's 32 KiB hook stdout limit. Rules that do not fit are deferred to a later Read/Edit/Write result, and a note names them.
+- **Size**: each rule is cut at 4000 characters and `CLAUDE.md` at 8000. A truncated item ends with a note that tells the model to Read the file for the rest. One injection is capped at 12000 characters and at 30000 bytes of hook output, which keeps it under ZCode's 32 KiB hook stdout limit. Rules that do not fit are deferred to a later Read/Edit/Write call they apply to, and a note names up to five of them.
 - **Timing**: PreToolUse context reaches the model together with the tool result. In the usual Read-then-Edit flow, the model sees a file's rules before it edits that file. A `Write` that creates a new file runs before the model sees the rule, so the rule applies to follow-up edits.
 - **Triggers**: only `Read`, `Edit`, and `Write` calls that carry a `file_path`. Bash, Grep, Glob, and patch-style edits do not trigger path rules. A call whose hook input exceeds 1 MiB (for example a `Write` of a very large file) is skipped.
 - **Discovery**: only `*.md` files directly inside `.zcode/rules/`, up to 200 files of at most 1 MiB each and 2 MiB in total; a file that would pass the total is skipped. Rule files are re-read on every Read/Edit/Write call, so edits apply without restarting.
@@ -102,10 +102,10 @@ Requirements: `node` 16 or newer on `PATH`. There are no npm packages, and the p
 
 ## Data and side effects
 
-- **Reads**: `CLAUDE.md`, whether `AGENTS.md` exists, and `.zcode/rules/*.md` in the project. Symlinks that resolve outside the project are skipped.
+- **Reads**: `CLAUDE.md`, whether `AGENTS.md` exists, and `.zcode/rules/*.md` in the project. Symlinked `CLAUDE.md` or rule files that resolve outside the project are skipped.
 - **Writes**: `${ZCODE_PLUGIN_DATA}/state.json`, or `~/.zcode/project-rules/state.json` when `ZCODE_PLUGIN_DATA` is not set, and a short-lived `state.lock`. The state file holds session ids, rule file paths, and content hashes, and only your user can read it. A session is pruned 7 days after its last state write, which happens at SessionStart and whenever a rule is injected. Nothing is written to the project or to the plugin directory.
 - **No** network access, MCP server, commands, or skills. Besides the `node` process itself, nothing is executed.
-- The hook never returns deny, ask, or rewritten input. On any error it prints nothing and exits 0, so tool calls always proceed.
+- The hook never returns deny, ask, or rewritten input, and it always exits 0, so tool calls always proceed. On an unexpected error it prints nothing. If the state file cannot be written, SessionStart context is still injected, but PreToolUse injects nothing.
 
 ## Troubleshooting
 
