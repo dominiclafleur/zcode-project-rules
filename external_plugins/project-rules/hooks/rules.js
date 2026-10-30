@@ -310,6 +310,11 @@ function relativeInside(base, target) {
 function toProjectRelative(filePath, projectDir) {
   if (typeof filePath !== 'string' || !filePath.trim()) return null;
   const absolute = path.resolve(projectDir, filePath);
+  // A file that exists but resolves (symlink) outside the project never matches:
+  // rule scoping follows the real target, not just the path as written.
+  if (fs.existsSync(absolute) && !relativeInside(realish(path.resolve(projectDir)), realish(absolute))) {
+    return null;
+  }
   return (
     relativeInside(path.resolve(projectDir), absolute) ||
     relativeInside(realish(path.resolve(projectDir)), realish(absolute))

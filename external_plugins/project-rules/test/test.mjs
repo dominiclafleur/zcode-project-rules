@@ -743,3 +743,31 @@ await test('hooks.json and plugin.json match the plugin contract', () => {
 fs.rmSync(tmpRoot, { recursive: true, force: true });
 console.log('\n' + passes + ' passed, ' + failures + ' failed');
 process.exitCode = failures ? 1 : 0;
+
+// Symlinked file_path: outside target excluded, inside target still matches.
+{
+  const dir = makeProject({
+    '.zcode/rules/ts-style.md': '---\npaths: "src/**/*.ts"\n---\nTS rule marker.',
+    '.zcode/rules/all.md': '---\n---\nAll marker.',
+    'src/inbound.ts': '// real file',
+  });
+  const outsideTarget = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pr-outside-')), 'outside.ts');
+  fs.writeFileSync(outsideTarget, '// outside target');
+  const escapeLink = path.join(dir, 'src', 'escape.ts');
+  fs.symlinkSync(outsideTarget, escapeLink);
+  const inboundLink = path.join(dir, 'src', 'inbound-link.ts');
+  fs.symlinkSync(path.join(dir, 'src', 'inbound.ts'), inboundLink);
+  const data = makeDataDir();
+
+  const escapeCtx = callHook(preToolUse('symlink-escape-1', dir, 'Edit', escapeLink), dir, data);
+  const escapeText = JSON.stringify(escapeCtx.context ?? null);
+  test('symlinked file_path resolving outside the project injects no path rule', () => {
+    assert.ok(!escapeText.includes('TS rule marker'), 'path rule must not fire for outside target');
+  });
+
+  const inboundCtx = callHook(preToolUse('symlink-escape-2', dir, 'Read', inboundLink), dir, data);
+  const inboundText = JSON.stringify(inboundCtx.context ?? null);
+  test('symlinked file_path resolving inside the project still matches', () => {
+    assert.ok(inboundText.includes('TS rule marker'), 'path rule must fire for inside target');
+  });
+}
